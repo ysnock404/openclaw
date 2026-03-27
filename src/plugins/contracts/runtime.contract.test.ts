@@ -1,36 +1,17 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import anthropicEntry from "../../../extensions/anthropic/index.js";
+import githubCopilotEntry from "../../../extensions/github-copilot/index.js";
+import googleEntry from "../../../extensions/google/index.js";
+import openaiEntry from "../../../extensions/openai/index.js";
+import openrouterEntry from "../../../extensions/openrouter/index.js";
+import veniceEntry from "../../../extensions/venice/index.js";
+import xaiEntry from "../../../extensions/xai/index.js";
+import zaiEntry from "../../../extensions/zai/index.js";
 import { createProviderUsageFetch, makeResponse } from "../../test-utils/provider-usage-fetch.js";
 import type { ProviderPlugin, ProviderRuntimeModel } from "../types.js";
-import { requireProviderContractProvider as requireBundledProviderContractProvider } from "./registry.js";
-
-const CONTRACT_SETUP_TIMEOUT_MS = 300_000;
-
-const getOAuthApiKeyMock = vi.hoisted(() => vi.fn());
-const getOAuthProvidersMock = vi.hoisted(() =>
-  vi.fn(() => [
-    { id: "anthropic", envApiKey: "ANTHROPIC_API_KEY", oauthTokenEnv: "ANTHROPIC_OAUTH_TOKEN" }, // pragma: allowlist secret
-    { id: "google", envApiKey: "GOOGLE_API_KEY", oauthTokenEnv: "GOOGLE_OAUTH_TOKEN" }, // pragma: allowlist secret
-    { id: "openai-codex", envApiKey: "OPENAI_API_KEY", oauthTokenEnv: "OPENAI_OAUTH_TOKEN" }, // pragma: allowlist secret
-  ]),
-);
-
-vi.mock("@mariozechner/pi-ai/oauth", async () => {
-  const actual = await vi.importActual<typeof import("@mariozechner/pi-ai/oauth")>(
-    "@mariozechner/pi-ai/oauth",
-  );
-  return {
-    ...actual,
-    getOAuthApiKey: getOAuthApiKeyMock,
-    getOAuthProviders: getOAuthProvidersMock,
-  };
-});
-
-vi.mock("../../../extensions/openai/src/openai-codex-provider.runtime.js", () => ({
-  getOAuthApiKey: getOAuthApiKeyMock,
-}));
 
 function createModel(overrides: Partial<ProviderRuntimeModel> & Pick<ProviderRuntimeModel, "id">) {
   return {
@@ -47,15 +28,62 @@ function createModel(overrides: Partial<ProviderRuntimeModel> & Pick<ProviderRun
   } satisfies ProviderRuntimeModel;
 }
 
+type TestPluginEntry = {
+  register: (api: unknown) => void | Promise<void>;
+};
+
+const PROVIDER_ENTRY_MODULES: Record<string, TestPluginEntry> = {
+  anthropic: anthropicEntry as unknown as TestPluginEntry,
+  "github-copilot": githubCopilotEntry as unknown as TestPluginEntry,
+  google: googleEntry as unknown as TestPluginEntry,
+  "google-gemini-cli": googleEntry as unknown as TestPluginEntry,
+  openai: openaiEntry as unknown as TestPluginEntry,
+  "openai-codex": openaiEntry as unknown as TestPluginEntry,
+  openrouter: openrouterEntry as unknown as TestPluginEntry,
+  venice: veniceEntry as unknown as TestPluginEntry,
+  xai: xaiEntry as unknown as TestPluginEntry,
+  zai: zaiEntry as unknown as TestPluginEntry,
+};
+
+const providerContractProviderCache = new Map<string, ProviderPlugin>();
+
 function requireProviderContractProvider(providerId: string): ProviderPlugin {
-  return requireBundledProviderContractProvider(providerId);
+  const cached = providerContractProviderCache.get(providerId);
+  if (cached) {
+    return cached;
+  }
+  const entry = PROVIDER_ENTRY_MODULES[providerId];
+  if (!entry) {
+    throw new Error(`No bundled provider entry registered for ${providerId}`);
+  }
+  const providers: ProviderPlugin[] = [];
+  const registration = entry.register({
+    registerProvider: (provider: ProviderPlugin) => {
+      providers.push(provider);
+    },
+    registerCliBackend: () => {},
+    registerSpeechProvider: () => {},
+    registerMediaUnderstandingProvider: () => {},
+    registerImageGenerationProvider: () => {},
+    registerWebSearchProvider: () => {},
+  });
+  if (registration instanceof Promise) {
+    throw new Error(
+      `Async registration is unsupported in provider runtime contract tests: ${providerId}`,
+    );
+  }
+  const provider = providers.find((candidate) => candidate.id === providerId);
+  if (!provider) {
+    throw new Error(`Provider ${providerId} not registered by bundled entry`);
+  }
+  providerContractProviderCache.set(providerId, provider);
+  return provider;
 }
 
 describe("provider runtime contract", () => {
-  beforeEach(() => {
-    getOAuthApiKeyMock.mockReset();
-    getOAuthProvidersMock.mockClear();
-  }, CONTRACT_SETUP_TIMEOUT_MS);
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   describe("anthropic", () => {
     it("owns anthropic 4.6 forward-compat resolution", () => {
@@ -529,8 +557,16 @@ describe("provider runtime contract", () => {
         expires: Date.now() - 60_000,
       };
 
-      getOAuthApiKeyMock.mockReset();
-      getOAuthApiKeyMock.mockRejectedValueOnce(new Error("Failed to extract accountId from token"));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          makeResponse(200, {
+            access_token: "not-a-jwt",
+            refresh_token: "next-refresh-token",
+            expires_in: 3600,
+          }),
+        ),
+      );
 
       await expect(provider.refreshOAuth?.(credential)).resolves.toEqual(credential);
     });

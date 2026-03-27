@@ -4,8 +4,8 @@ import type { OpenClawConfig } from "../../config/config.js";
 import type { SecretInput } from "../../config/types.secrets.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import type { OllamaEmbeddingClient } from "../../plugin-sdk/memory-core-host.js";
-import { createProviderEmbeddingProvider } from "../provider-runtime.js";
 import { resolveUserPath } from "../../utils.js";
+import { createProviderEmbeddingProvider } from "../provider-runtime.js";
 import type { EmbeddingInput } from "./embedding-inputs.js";
 import { sanitizeAndNormalizeEmbedding } from "./embedding-vectors.js";
 import {

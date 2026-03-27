@@ -482,8 +482,10 @@ describe("config strict validation", () => {
 
       const snap = await readConfigFileSnapshot();
 
-      expect(snap.valid).toBe(true);
-      expect(snap.legacyIssues).not.toHaveLength(0);
+      expect(snap.valid).toBe(false);
+      expect(snap.legacyIssues).toEqual([]);
+      expect(snap.issues[0]?.path).toBe("");
+      expect(snap.issues[0]?.message).toContain('"routing"');
     });
   });
 

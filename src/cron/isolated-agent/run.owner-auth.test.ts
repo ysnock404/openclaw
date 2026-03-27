@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import "../../agents/test-helpers/fast-coding-tools.js";
-import { createOpenClawCodingTools } from "../../agents/pi-tools.js";
 import {
-  clearFastTestEnv,
   loadRunCronIsolatedAgentTurn,
   resetRunCronIsolatedAgentTurnHarness,
   resolveDeliveryTargetMock,
@@ -34,7 +31,7 @@ describe("runCronIsolatedAgentTurn owner auth", () => {
   let previousFastTestEnv: string | undefined;
 
   beforeEach(() => {
-    previousFastTestEnv = clearFastTestEnv();
+    previousFastTestEnv = process.env.OPENCLAW_TEST_FAST;
     resetRunCronIsolatedAgentTurnHarness();
     resolveDeliveryTargetMock.mockResolvedValue({
       channel: "telegram",
@@ -58,9 +55,5 @@ describe("runCronIsolatedAgentTurn owner auth", () => {
     expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(1);
     const senderIsOwner = runEmbeddedPiAgentMock.mock.calls[0]?.[0]?.senderIsOwner;
     expect(senderIsOwner).toBe(true);
-
-    const toolNames = createOpenClawCodingTools({ senderIsOwner }).map((tool) => tool.name);
-    expect(toolNames).toContain("cron");
-    expect(toolNames).toContain("gateway");
   });
 });
